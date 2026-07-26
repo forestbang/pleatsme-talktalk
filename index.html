@@ -64,7 +64,10 @@
   .hide{display:none;}
   .muted{color:#98a29a;font-size:13px;text-align:center;padding:14px;}
   footer{text-align:center;font-size:11.5px;color:#aab2ab;margin-top:26px;line-height:1.7;}
-  .admin-link{color:#c3cbc4;cursor:pointer;text-decoration:underline;}
+  .admin-link{display:inline-block;margin-top:14px;color:#7c867e;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:underline;}
+  .pin-in{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-size:22px;font-family:inherit;color:var(--navy);text-align:center;letter-spacing:8px;font-weight:700;}
+  .pin-in:focus{outline:none;border-color:var(--green);}
+  .hint{font-size:12px;color:#98a29a;margin-top:6px;}
 
   /* 관리자 화면 */
   .adm-head{background:var(--navy);color:#fff;padding:18px;text-align:center;border-radius:0 0 20px 20px;}
@@ -106,10 +109,10 @@
   <header>
     <div class="logo">
       <svg viewBox="0 0 48 48" fill="none">
-        <path d="M8 12a4 4 0 014-4h24a4 4 0 014 4v18a4 4 0 01-4 4H20l-9 7v-7h-1a4 4 0 01-4-4V12z" fill="#fff"/>
-        <circle cx="18" cy="21" r="2.4" fill="#ED9B33"/>
-        <circle cx="24" cy="21" r="2.4" fill="#009e55"/>
-        <circle cx="30" cy="21" r="2.4" fill="#1A365D"/>
+        <path d="M24 10c7.6 0 13.5 5.2 13.5 11.6 0 6.4-5.9 11.6-13.5 11.6-1.5 0-3-.2-4.4-.6-1.8 2.3-4.4 3.6-7.2 4 1.6-1.7 2.6-3.6 2.6-5.5-3-2.1-4.5-5.6-4.5-9.5C10.5 15.2 16.4 10 24 10z" fill="#fff"/>
+        <circle cx="18.5" cy="21.6" r="2.4" fill="#ED9B33"/>
+        <circle cx="24" cy="21.6" r="2.4" fill="#009e55"/>
+        <circle cx="29.5" cy="21.6" r="2.4" fill="#1A365D"/>
       </svg>
       <h1>플리츠미 톡톡</h1>
     </div>
@@ -147,6 +150,9 @@
           <input type="checkbox" id="consent">
           <span>필요 시 담당 관리자가 <b>제 동의를 받아</b> 내용을 관련자에게 전달·공개하는 것에 동의합니다. (미체크 시 끝까지 익명·비공개 처리)</span>
         </div>
+        <label style="margin-top:20px;">답변 확인용 비밀번호 (숫자 6자리 직접 정하기)</label>
+        <input type="text" id="mypin" class="pin-in" inputmode="numeric" maxlength="6" placeholder="● ● ● ● ● ●">
+        <p class="hint">나중에 이 번호로 답변을 확인합니다. 잊지 않을 숫자로 정해주세요. (생일·전화번호처럼 쉽게 짐작되는 번호는 피해주세요.)</p>
         <button class="btn" onclick="submitPost()">안전하게 보내기</button>
       </div>
 
@@ -161,7 +167,7 @@
           <div class="lbl">나의 비밀번호</div>
           <div class="code" id="myCode">000000</div>
         </div>
-        <div class="warn">⚠️ 이 번호를 꼭 저장(캡처)해 두세요. 이 번호로만 답변을 확인할 수 있고, 익명 보호를 위해 다시 알려드릴 수 없습니다.</div>
+        <div class="warn">⚠️ 방금 직접 정하신 이 번호로만 답변을 확인할 수 있어요. 꼭 기억해두세요. (익명 보호를 위해 다시 알려드릴 수 없습니다.)</div>
         <button class="btn gold" onclick="location.reload()">확인</button>
       </div>
     </div>
@@ -180,7 +186,7 @@
     <footer>
       플리츠미 톡톡 · 해피미 케어센터<br>
       상담 문의 119@pleatsme.com · 모든 상담은 비밀이 보장됩니다.<br>
-      <span class="admin-link" onclick="openAdmin()">관리자</span>
+      <span class="admin-link" onclick="openAdmin()">🔒 관리자 로그인</span>
     </footer>
   </div>
 </div>
@@ -270,18 +276,24 @@ async function makeCode(){
 let sending=false;
 async function submitPost(){
   const content=document.getElementById('content').value.trim();
+  const pin=document.getElementById('mypin').value.trim();
   if(!cat){ alert('먼저 이야기 종류를 선택해주세요.'); return; }
   if(content.length<5){ alert('내용을 조금만 더 적어주세요.'); return; }
+  if(!/^\d{6}$/.test(pin)){ alert('답변 확인용 비밀번호를 숫자 6자리로 정해주세요.'); return; }
   if(sending) return; sending=true;
   try{
-    const code=await makeCode();
-    await db.ref('posts/'+code).set({
+    const exist=await db.ref('posts/'+pin).once('value');
+    if(exist.exists()){
+      alert('이미 사용 중인 번호예요. 다른 6자리 숫자로 정해주세요.');
+      sending=false; return;
+    }
+    await db.ref('posts/'+pin).set({
       category:cat,content:content,
       urgent:document.getElementById('urgent').checked,
       consent:document.getElementById('consent').checked,
       status:'접수',reply:'',createdAt:Date.now()
     });
-    document.getElementById('myCode').textContent=code;
+    document.getElementById('myCode').textContent=pin;
     document.getElementById('formCard').classList.add('hide');
     document.getElementById('doneCard').classList.remove('hide');
     window.scrollTo(0,0);
