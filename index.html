@@ -456,6 +456,7 @@ function renderStats(){
 /* 엑셀(CSV) 내보내기 */
 function exportCSV(){
   if(!allPosts.length){ alert('내보낼 제보가 없습니다.'); return; }
+  if(!confirm('⚠️ 개인정보 보호 안내\n\n이 파일에는 직원들의 상담 내용이 담겨 있습니다.\n\n· 담당 관리자 본인 PC에서만 열람·보관하세요.\n· 이메일·메신저·공용 폴더 등으로 공유하지 마세요.\n· 사용 후에는 안전하게 삭제하세요.\n\n위 내용에 동의하고 내보내시겠습니까?')) return;
   const head=['접수번호','분류','긴급','공개동의','상태','접수일시','답변일시','내용','답변'];
   const rows=allPosts.map(p=>[
     p.code, p.category||'', p.urgent?'긴급':'', p.consent?'동의':'',
