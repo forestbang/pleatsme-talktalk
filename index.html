@@ -104,6 +104,20 @@
   .saved{font-size:12.5px;color:var(--green);font-weight:700;}
   .empty{text-align:center;color:#98a29a;padding:50px 0;font-size:14px;}
   .logout{display:inline-block;margin-top:10px;font-size:12.5px;color:#8a958d;cursor:pointer;text-decoration:underline;}
+  .dates{font-size:11.5px;color:#7a857c;margin:2px 0 8px;}
+  .del{margin-left:auto;padding:9px 14px;border:1.5px solid #f0c9c4;border-radius:10px;background:#fff;color:#c0392b;font-weight:700;font-size:13px;cursor:pointer;}
+  .del:active{background:#fdeeec;}
+  .adm-tools{display:flex;justify-content:flex-end;margin-bottom:12px;}
+  .tool-btn{padding:9px 16px;border:1.5px solid var(--green);border-radius:10px;background:#fff;color:var(--green);font-weight:700;font-size:13px;cursor:pointer;}
+  .tool-btn:active{background:#eaf7f0;}
+  .statPanel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 16px 10px;margin-bottom:14px;}
+  .stat-title{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:12px;}
+  .bar-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .bar-lbl{width:88px;font-size:12px;color:#5c655e;flex-shrink:0;}
+  .bar-track{flex:1;height:14px;background:#f0f3f1;border-radius:7px;overflow:hidden;}
+  .bar-fill{height:100%;background:linear-gradient(90deg,#00b862,#009e55);border-radius:7px;}
+  .bar-num{width:26px;text-align:right;font-size:12px;font-weight:700;color:var(--navy);flex-shrink:0;}
+  .chk-dates{font-size:12px;color:#7a857c;margin:8px 0 2px;}
 </style>
 </head>
 <body>
@@ -223,6 +237,8 @@
   </div>
   <div class="wrap">
     <div class="stats" id="stats"></div>
+    <div class="statPanel" id="statPanel"></div>
+    <div class="adm-tools"><button class="tool-btn" onclick="exportCSV()">⬇ 엑셀로 내보내기 (CSV)</button></div>
     <div class="filters" id="filters">
       <div class="f on" data-f="all">전체</div>
       <div class="f" data-f="urgent">⚡ 긴급</div>
@@ -317,6 +333,7 @@ async function checkPost(){
     const d=snap.val();
     const st={'접수':['s-wait','접수됨'],'처리중':['s-prog','처리 중'],'완료':['s-done','처리 완료']}[d.status]||['s-wait','접수됨'];
     let html=`<div><span class="status-tag ${st[0]}">${st[1]}</span></div>`;
+    html+=`<div class="chk-dates">📥 접수 ${fmt(d.createdAt)}${d.repliedAt?`　·　✅ 답변 ${fmt(d.repliedAt)}`:''}</div>`;
     html+=`<div class="bubble me"><div class="who">내가 보낸 내용 · ${d.category}</div>${esc(d.content)}</div>`;
     if(d.reply && d.reply.trim()){
       html+=`<div class="bubble center"><div class="who">🌿 해피미 케어센터 답변</div>${esc(d.reply)}</div>`;
@@ -371,10 +388,8 @@ function render(){
   if(curFilter==='urgent') list=list.filter(p=>p.urgent);
   else if(curFilter!=='all') list=list.filter(p=>p.status===curFilter);
   const box=document.getElementById('list');
-  if(!list.length){ box.innerHTML='<div class="empty">해당하는 제보가 없습니다.</div>'; return; }
+  if(!list.length){ box.innerHTML='<div class="empty">해당하는 제보가 없습니다.</div>'; renderStats(); return; }
   box.innerHTML=list.map(p=>{
-    const d=new Date(p.createdAt||0);
-    const ds=`${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     return `<div class="item ${p.urgent?'urg':''}">
       <div class="top">
         <div class="badges">
@@ -383,8 +398,8 @@ function render(){
           ${p.urgent?'<span class="tag t-urg">⚡ 긴급</span>':''}
           ${p.consent?'<span class="tag t-consent">공개동의</span>':''}
         </div>
-        <span class="date">${ds}</span>
       </div>
+      <div class="dates">📥 접수 ${fmt(p.createdAt)}${p.repliedAt?`　·　✅ 답변 ${fmt(p.repliedAt)}`:''}</div>
       <div class="content">${esc(p.content)}</div>
       <div class="row">
         <select class="sel" id="st_${p.code}">${opt('접수',p.status)}${opt('처리중',p.status)}${opt('완료',p.status)}</select>
@@ -395,20 +410,65 @@ function render(){
         <div class="row">
           <button class="save" onclick="save('${p.code}')">저장</button>
           <span class="saved hide" id="sv_${p.code}">✔ 저장됨</span>
+          <button class="del" onclick="delPost('${p.code}')">🗑 삭제</button>
         </div>
       </div>
     </div>`;
   }).join('');
+  renderStats();
 }
 function opt(v,cur){return `<option value="${v}" ${v===cur?'selected':''}>${v}</option>`;}
 function pad(n){return String(n).padStart(2,'0');}
+function fmt(ts){ if(!ts) return '-'; const d=new Date(ts); return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+
 async function save(code){
   const status=document.getElementById('st_'+code).value;
   const reply=document.getElementById('rp_'+code).value;
-  await db.ref('posts/'+code).update({status,reply});
+  const upd={status,reply};
+  if(reply.trim()) upd.repliedAt=Date.now();   // 답변 저장 시각 기록
+  await db.ref('posts/'+code).update(upd);
   const s=document.getElementById('sv_'+code);
   s.classList.remove('hide'); setTimeout(()=>s.classList.add('hide'),1800);
+}
+
+/* 삭제 (되돌릴 수 없음 → 확인) */
+async function delPost(code){
+  if(!confirm('이 제보를 정말 삭제할까요?\n삭제하면 되돌릴 수 없습니다.')) return;
+  await db.ref('posts/'+code).remove();
+}
+
+/* 통계 패널 */
+function renderStats(){
+  const cats=['고충·불편','제안·건의','갈등·중재','성희롱·괴롭힘','제도·복지','기타'];
+  const now=new Date();
+  const thisMonth=allPosts.filter(p=>{const d=new Date(p.createdAt||0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
+  const max=Math.max(1,...cats.map(c=>allPosts.filter(p=>p.category===c).length));
+  let html=`<div class="stat-title">📊 분류별 현황 · 전체 ${allPosts.length}건 (이번 달 ${thisMonth}건)</div>`;
+  cats.forEach(c=>{
+    const n=allPosts.filter(p=>p.category===c).length;
+    const w=Math.round(n/max*100);
+    html+=`<div class="bar-row"><span class="bar-lbl">${c}</span><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><span class="bar-num">${n}</span></div>`;
+  });
+  document.getElementById('statPanel').innerHTML=html;
+}
+
+/* 엑셀(CSV) 내보내기 */
+function exportCSV(){
+  if(!allPosts.length){ alert('내보낼 제보가 없습니다.'); return; }
+  const head=['접수번호','분류','긴급','공개동의','상태','접수일시','답변일시','내용','답변'];
+  const rows=allPosts.map(p=>[
+    p.code, p.category||'', p.urgent?'긴급':'', p.consent?'동의':'',
+    p.status||'', fmt(p.createdAt), p.repliedAt?fmt(p.repliedAt):'',
+    (p.content||'').replace(/\r?\n/g,' '), (p.reply||'').replace(/\r?\n/g,' ')
+  ]);
+  const csv=[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const now=new Date();
+  a.href=url; a.download=`플리츠미톡톡_상담내역_${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 </script>
 </body>
