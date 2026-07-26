@@ -118,6 +118,12 @@
   .bar-fill{height:100%;background:linear-gradient(90deg,#00b862,#009e55);border-radius:7px;}
   .bar-num{width:26px;text-align:right;font-size:12px;font-weight:700;color:var(--navy);flex-shrink:0;}
   .chk-dates{font-size:12px;color:#7a857c;margin:8px 0 2px;}
+  .filelist{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+  .fileitem{display:flex;align-items:center;justify-content:space-between;background:#f4f7f5;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;color:var(--navy);}
+  .filedel{cursor:pointer;color:#c0392b;font-weight:700;padding:0 4px;}
+  .atts{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;}
+  .att-img img{width:74px;height:74px;object-fit:cover;border-radius:10px;border:1px solid var(--line);}
+  .att-file{display:inline-block;background:#eef1f5;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12.5px;color:var(--navy);text-decoration:none;font-weight:600;}
 </style>
 </head>
 <body>
@@ -162,6 +168,12 @@
         </div>
         <label style="margin-top:20px;">내용을 편하게 적어주세요</label>
         <textarea id="content" placeholder="어떤 이야기든 괜찮습니다. 있었던 일, 느낀 점, 바라는 점을 자유롭게 적어주세요."></textarea>
+
+        <label style="margin-top:20px;">파일 첨부 <span style="font-weight:500;color:#98a29a;">(선택)</span></label>
+        <input type="file" id="files" multiple accept="image/*,.pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onchange="onFiles()" style="font-size:13px;border:1.5px dashed var(--line);border-radius:12px;padding:12px;width:100%;">
+        <p class="hint">📎 첨부 가능: 사진(JPG·PNG 등), PDF, 한글(HWP), 워드, 엑셀, PPT, 텍스트<br>· 최대 <b>3개</b>, 파일 하나당 <b>2MB 이하</b> · 사진은 자동으로 용량이 줄고 위치정보가 지워집니다.</p>
+        <div id="fileList" class="filelist"></div>
+
         <div class="urgent">
           <input type="checkbox" id="urgent">
           <span>⚡ 빠른 도움이 필요한 긴급 사안입니다</span>
@@ -298,6 +310,33 @@ async function makeCode(){
   return String(Date.now()).slice(-6);
 }
 
+/* ---- 직원: 파일 첨부 ---- */
+let attachments=[]; // {name,type,data(base64)}
+async function onFiles(){
+  const input=document.getElementById('files');
+  for(const f of [...input.files]){
+    if(attachments.length>=3){ alert('첨부는 최대 3개까지예요.'); break; }
+    try{
+      let item;
+      if(f.type.startsWith('image/')){ item=await shrinkImage(f); }
+      else{
+        if(f.size>2*1024*1024){ alert(`'${f.name}' 파일이 2MB보다 커서 올릴 수 없어요. 더 작은 파일로 올려주세요.`); continue; }
+        item=await readFile(f);
+      }
+      attachments.push(item);
+    }catch(e){ alert('파일을 불러오지 못했어요: '+f.name); }
+  }
+  input.value='';
+  renderFileList();
+}
+function renderFileList(){
+  document.getElementById('fileList').innerHTML=attachments.map((a,i)=>
+    `<div class="fileitem"><span>📎 ${esc(a.name)}</span><span class="filedel" onclick="removeFile(${i})">✕</span></div>`).join('');
+}
+function removeFile(i){ attachments.splice(i,1); renderFileList(); }
+function readFile(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res({name:f.name,type:f.type||'application/octet-stream',data:r.result}); r.onerror=rej; r.readAsDataURL(f); }); }
+function shrinkImage(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>{ const img=new Image(); img.onload=()=>{ const max=1200; let w=img.width,h=img.height; if(w>max||h>max){ if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} } const c=document.createElement('canvas'); c.width=w;c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); res({name:f.name.replace(/\.\w+$/,'')+'.jpg',type:'image/jpeg',data:c.toDataURL('image/jpeg',0.7)}); }; img.onerror=rej; img.src=r.result; }; r.onerror=rej; r.readAsDataURL(f); }); }
+
 let sending=false;
 async function submitPost(){
   const content=document.getElementById('content').value.trim();
@@ -312,12 +351,14 @@ async function submitPost(){
       alert('이미 사용 중인 번호예요. 다른 6자리 숫자로 정해주세요.');
       sending=false; return;
     }
-    await db.ref('posts/'+pin).set({
+    const data={
       category:cat,content:content,
       urgent:document.getElementById('urgent').checked,
       consent:document.getElementById('consent').checked,
       status:'접수',reply:'',createdAt:Date.now()
-    });
+    };
+    if(attachments.length) data.attachments=attachments;
+    await db.ref('posts/'+pin).set(data);
     document.getElementById('myCode').textContent=pin;
     document.getElementById('formCard').classList.add('hide');
     document.getElementById('doneCard').classList.remove('hide');
@@ -338,6 +379,7 @@ async function checkPost(){
     let html=`<div><span class="status-tag ${st[0]}">${st[1]}</span></div>`;
     html+=`<div class="chk-dates">📥 접수 ${fmt(d.createdAt)}${d.repliedAt?`　·　✅ 답변 ${fmt(d.repliedAt)}`:''}</div>`;
     html+=`<div class="bubble me"><div class="who">내가 보낸 내용 · ${d.category}</div>${esc(d.content)}</div>`;
+    html+=renderAtt(d.attachments);
     if(d.reply && d.reply.trim()){
       html+=`<div class="bubble center"><div class="who">🌿 해피미 케어센터 답변</div>${esc(d.reply)}</div>`;
     }else{
@@ -411,6 +453,7 @@ function render(){
       </div>
       <div class="dates">📥 접수 ${fmt(p.createdAt)}${p.repliedAt?`　·　✅ 답변 ${fmt(p.repliedAt)}`:''}</div>
       <div class="content">${esc(p.content)}</div>
+      ${renderAtt(p.attachments)}
       <div class="row">
         <select class="sel" id="st_${p.code}">${opt('접수',p.status)}${opt('처리중',p.status)}${opt('완료',p.status)}</select>
         <span style="font-size:12.5px;color:#8a958d;">상태 변경 후 저장</span>
@@ -431,6 +474,14 @@ function opt(v,cur){return `<option value="${v}" ${v===cur?'selected':''}>${v}</
 function pad(n){return String(n).padStart(2,'0');}
 function fmt(ts){ if(!ts) return '-'; const d=new Date(ts); return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+function renderAtt(atts){
+  if(!atts||!atts.length) return '';
+  return '<div class="atts">'+atts.map(a=>
+    a.type&&a.type.startsWith('image/')
+      ? `<a href="${a.data}" target="_blank" class="att-img" title="${esc(a.name)}"><img src="${a.data}"></a>`
+      : `<a href="${a.data}" download="${esc(a.name)}" class="att-file">📎 ${esc(a.name)}</a>`
+  ).join('')+'</div>';
+}
 
 async function save(code){
   const status=document.getElementById('st_'+code).value;
@@ -467,10 +518,11 @@ function renderStats(){
 function exportCSV(){
   if(!allPosts.length){ alert('내보낼 제보가 없습니다.'); return; }
   if(!confirm('⚠️ 개인정보 보호 안내\n\n이 파일에는 직원들의 상담 내용이 담겨 있습니다.\n\n· 담당 관리자 본인 PC에서만 열람·보관하세요.\n· 이메일·메신저·공용 폴더 등으로 공유하지 마세요.\n· 사용 후에는 안전하게 삭제하세요.\n\n위 내용에 동의하고 내보내시겠습니까?')) return;
-  const head=['접수번호','분류','긴급','공개동의','상태','접수일시','답변일시','내용','답변'];
+  const head=['접수번호','분류','긴급','공개동의','상태','접수일시','답변일시','첨부수','내용','답변'];
   const rows=allPosts.map(p=>[
     p.code, p.category||'', p.urgent?'긴급':'', p.consent?'동의':'',
     p.status||'', fmt(p.createdAt), p.repliedAt?fmt(p.repliedAt):'',
+    (p.attachments?p.attachments.length:0),
     (p.content||'').replace(/\r?\n/g,' '), (p.reply||'').replace(/\r?\n/g,' ')
   ]);
   const csv=[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
