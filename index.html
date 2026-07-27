@@ -268,6 +268,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
 /* ===== Firebase 설정 (입력 완료) ===== */
 const firebaseConfig = {
@@ -285,6 +286,10 @@ const ADMIN_PW = "happyme2026";
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+/* ===== EmailJS 알림 설정 ===== */
+try{ emailjs.init({ publicKey: "yL7fvPogeapSba7Gy" }); }catch(e){}
+const EMAIL_SERVICE="service_gf0l57s", EMAIL_TEMPLATE="template_72sjura";
 
 /* ---- 직원: 탭 ---- */
 function showTab(t){
@@ -359,6 +364,16 @@ async function submitPost(){
     };
     if(attachments.length) data.attachments=attachments;
     await db.ref('posts/'+pin).set(data);
+    // 담당 관리자에게 알림 메일 발송 (내용은 담지 않음)
+    try{
+      if(window.emailjs){
+        emailjs.send(EMAIL_SERVICE,EMAIL_TEMPLATE,{
+          category:cat,
+          urgent:document.getElementById('urgent').checked?'긴급':'일반',
+          time:fmt(Date.now())
+        }).catch(()=>{});
+      }
+    }catch(e){}
     document.getElementById('myCode').textContent=pin;
     document.getElementById('formCard').classList.add('hide');
     document.getElementById('doneCard').classList.remove('hide');
